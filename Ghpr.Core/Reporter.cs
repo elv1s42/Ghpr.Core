@@ -1,13 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
 using Ghpr.Core.Common;
 using Ghpr.Core.EmbeddedResources;
-using Ghpr.Core.Enums;
 using Ghpr.Core.Extensions;
-using Ghpr.Core.Helpers;
 using Ghpr.Core.Interfaces;
 using Ghpr.Core.Utils;
 
@@ -15,78 +10,33 @@ namespace Ghpr.Core
 {
     public class Reporter : IReporter
     {
-        private void InitializeReporter(IReporterSettings settings)
+        public IRunDtoRepository RunRepository { get; internal set; }
+        public ITestRunsRepository TestRunsRepository { get; internal set; }
+        public ITestRunDtoProcessor TestRunProcessor { get; internal set; }
+        public IDataService DataService { get; internal set; }
+        public bool TestRunStarted { get; internal set; }
+        public ReportSettingsDto ReportSettings { get; internal set; }
+        public ReporterSettings ReporterSettings { get; internal set; }
+        public IActionHelper Action { get; internal set; }
+        public ITestDataProvider TestDataProvider { get; internal set; }
+
+        private void InitializeOnRunStarted(DateTime startDateTime)
         {
-            if (settings.OutputPath == null)
+            Action.Safe(() =>
             {
-                throw new ArgumentNullException(nameof(settings.OutputPath),
-                    "Reporter Output path must be specified. Please fix your .json settings file.");
-            }
-            Settings = settings;
-            ReportSettings = new ReportSettings(settings.RunsToDisplay, settings.TestsToDisplay);
-            _action = new ActionHelper(settings.OutputPath);
-            _extractor = new ResourceExtractor(_action, settings.OutputPath);
-            TestRunStarted = false;
-        }
-        
-        public Reporter(IReporterSettings settings)
-        {
-            InitializeReporter(settings);
-        }
-
-        public Reporter()
-        {
-            var settings = ReporterHelper.GetSettingsFromFile();
-            InitializeReporter(settings);
-        }
-
-        public Reporter(TestingFramework framework)
-        {
-            var fileName = ReporterHelper.GetSettingsFileName(framework);
-            var settings = ReporterHelper.GetSettingsFromFile(fileName);
-            InitializeReporter(settings);
-        }
-
-        private IRun _currentRun;
-        private ITestRun _currentTestRun;
-        private List<ITestRun> _currentTestRuns;
-        private Guid _currentRunGuid;
-        private ResourceExtractor _extractor;
-        private static ActionHelper _action;
-
-        public bool TestRunStarted { get; private set; }
-        public IReportSettings ReportSettings { get; private set; }
-        public IReporterSettings Settings { get; private set; }
-        public string TestsPath => Path.Combine(Settings.OutputPath, Paths.Folders.Tests);
-        public string RunsPath => Path.Combine(Settings.OutputPath, Paths.Folders.Runs);
-
-        private void InitializeRun(DateTime startDateTime, string runGuid = "")
-        {
-            _action.Safe(() =>
-            {
-                _currentRunGuid = runGuid.Equals("") || runGuid.Equals("null") ? Guid.NewGuid() : Guid.Parse(runGuid);
-                _currentRun = new Run(_currentRunGuid)
-                {
-                    TestRunFiles = new List<string>(),
-                    RunSummary = new RunSummary()
-                };
-                _currentTestRuns = new List<ITestRun>();
-                _currentRun.Name = Settings.RunName;
-                _currentRun.Sprint = Settings.Sprint;
-                _extractor.ExtractReportBase();
-                _currentRun.RunInfo.Start = startDateTime;
-                ReportSettings.Save(Settings.OutputPath);
+                RunRepository.OnRunStarted(ReporterSettings, startDateTime);
+                TestRunsRepository.OnRunStarted();
+                ResourceExtractor.ExtractReportBase(ReporterSettings.OutputPath);
+                DataService.SaveReportSettings(ReportSettings);
             });
         }
 
         private void GenerateReport(DateTime finishDateTime)
         {
-            _action.Safe(() =>
+            Action.Safe(() =>
             {
-                _currentRun.RunInfo.Finish = finishDateTime;
-                _currentRun.Save(RunsPath);
-                var runInfo = new ItemInfo(_currentRun.RunInfo);
-                runInfo.SaveCurrentRunInfo(RunsPath);
+                RunRepository.OnRunFinished(finishDateTime);
+                DataService.SaveRun(RunRepository.CurrentRun);
             });
         }
 
@@ -94,7 +44,7 @@ namespace Ghpr.Core
         {
             if (!TestRunStarted)
             {
-                InitializeRun(DateTime.Now, Settings.RunGuid);
+                InitializeOnRunStarted(DateTime.Now);
                 TestRunStarted = true;
             }
         }
@@ -104,120 +54,54 @@ namespace Ghpr.Core
             GenerateReport(DateTime.Now);
         }
 
-        public void TestStarted(ITestRun testRun)
+        public void TestStarted(TestRunDto testRun)
         {
-            _action.Safe(() =>
+            Action.Safe(() =>
             {
-                _currentTestRuns.Add(testRun);
-                _currentTestRun = testRun;
+                TestRunsRepository.AddNewTestRun(testRun);
             });
         }
 
-        public void SaveScreenshot(Bitmap screen)
+        public void AddCompleteTestRun(TestRunDto testRun)
         {
-            _action.Safe(() =>
-            {
-                var testGuid = _currentTestRun.TestInfo.Guid.ToString();
-                var date = DateTime.Now;
-                var s = new TestScreenshot(date);
-                ScreenshotHelper.SaveScreenshot(Path.Combine(TestsPath, testGuid, Paths.Folders.Img), screen, date);
-                _currentTestRun.Screenshots.Add(s);
-                _currentTestRuns.First(
-                    tr => tr.TestInfo.Guid.Equals(_currentTestRun.TestInfo.Guid))
-                    .Screenshots.Add(s);
-            });
-        }
-        
-        public void AddCompleteTestRun(ITestRun testRun)
-        {
-            _action.Safe(() =>
-            {
-                _currentRun.RunSummary.Total++;
-
-                var finishDateTime = testRun.TestInfo.Finish;
-                var testGuid = testRun.TestInfo.Guid.ToString();
-                var testPath = Path.Combine(TestsPath, testGuid);
-                var fileName = finishDateTime.GetTestName();
-
-                _currentRun.RunSummary = _currentRun.RunSummary.Update(testRun);
-
-                testRun.TestInfo.FileName = fileName;
-                testRun.RunGuid = _currentRunGuid;
-                testRun.TestInfo.Start = testRun.TestInfo.Start.Equals(default(DateTime))
-                    ? finishDateTime
-                    : testRun.TestInfo.Start;
-                testRun.TestInfo.Finish = testRun.TestInfo.Finish.Equals(default(DateTime))
-                    ? finishDateTime
-                    : testRun.TestInfo.Finish;
-                testRun.TestDuration = testRun.TestDuration.Equals(0.0)
-                    ? (testRun.TestInfo.Finish - testRun.TestInfo.Start).TotalSeconds
-                    : testRun.TestDuration;
-                testRun.Save(testPath, fileName);
-                _currentRun.TestRunFiles.Add(Paths.GetRelativeTestRunPath(testGuid, fileName));
-
-                testRun.TestInfo.SaveCurrentTestInfo(testPath);
-            });
+            OnTestFinish(testRun);
         }
 
-        public void TestFinished(ITestRun testRun)
+        public void TestFinished(TestRunDto testRun)
         {
-            _action.Safe(() =>
+            OnTestFinish(testRun);
+            if (ReporterSettings.RealTimeGeneration)
             {
-                _currentRun.RunSummary.Total++;
-
-                var finishDateTime = DateTime.Now;
-                var currentTest = _currentTestRuns.GetTestRun(testRun);
-                var finalTest = testRun.Update(currentTest);
-                var testGuid = finalTest.TestInfo.Guid.ToString();
-                var testPath = Path.Combine(TestsPath, testGuid);
-                var fileName = finishDateTime.GetTestName();
-
-                _currentRun.RunSummary = _currentRun.RunSummary.Update(finalTest);
-
-                finalTest.TestInfo.FileName = fileName;
-                finalTest.RunGuid = _currentRunGuid;
-                finalTest.TestInfo.Start = finalTest.TestInfo.Start.Equals(default(DateTime))
-                    ? finishDateTime
-                    : finalTest.TestInfo.Start;
-                finalTest.TestInfo.Finish = finalTest.TestInfo.Finish.Equals(default(DateTime))
-                    ? finishDateTime
-                    : finalTest.TestInfo.Finish;
-                finalTest.TestDuration = finalTest.TestDuration.Equals(0.0)
-                    ? (finalTest.TestInfo.Finish - finalTest.TestInfo.Start).TotalSeconds
-                    : finalTest.TestDuration;
-
-                finalTest.Save(testPath, fileName);
-                _currentTestRuns.Remove(currentTest);
-                _currentRun.TestRunFiles.Add(Paths.GetRelativeTestRunPath(testGuid, fileName));
-
-                finalTest.TestInfo.SaveCurrentTestInfo(testPath);
-
-                if (Settings.RealTimeGeneration)
-                {
-                    GenerateReport(DateTime.Now);
-                }
-            });
-        }
-
-        public void GenerateFullReport(List<ITestRun> testRuns)
-        {
-            if (!testRuns.Any())
-            {
-                throw new Exception("Emplty test runs list!");
+                GenerateReport(DateTime.Now);
             }
-            var runStart = testRuns.OrderBy(t => t.TestInfo.Start).First(t => !t.TestInfo.Start.Equals(default(DateTime))).TestInfo.Start;
-            var runFinish = testRuns.OrderByDescending(t => t.TestInfo.Finish).First(t => !t.TestInfo.Start.Equals(default(DateTime))).TestInfo.Finish;
-            GenerateFullReport(testRuns, runStart, runFinish);
         }
 
-        public void GenerateFullReport(List<ITestRun> testRuns, DateTime start, DateTime finish)
+        public void SaveScreenshot(byte[] screenshotBytes)
         {
-            if (!testRuns.Any())
-            {
-                throw new Exception("Emplty test runs list!");
-            }
+            var guid = TestDataProvider.GetCurrentTestRunGuid();
+            var testScreenshot = new TestScreenshotDto{TestGuid = guid, Data =  screenshotBytes, Date = DateTime.Now};
+            DataService.SaveScreenshot(testScreenshot);
+        }
 
-            InitializeRun(start, Settings.RunGuid);
+        private void OnTestFinish(TestRunDto testDtoWhenFinished)
+        {
+            Action.Safe(() =>
+            {
+                RunRepository.OnTestFinished(testDtoWhenFinished);
+                var testDtoWhenStarted = TestRunsRepository.ExtractCorrespondingTestRun(testDtoWhenFinished);
+                var finalTest = TestRunProcessor.Process(testDtoWhenStarted, testDtoWhenFinished, RunRepository.RunGuid);
+                DataService.SaveTestRun(finalTest);
+            });
+        }
+
+        public void GenerateFullReport(List<TestRunDto> testRuns)
+        {
+            GenerateFullReport(testRuns, testRuns.GetRunStartDateTime(), testRuns.GetRunFinishDateTime());
+        }
+
+        public void GenerateFullReport(List<TestRunDto> testRuns, DateTime start, DateTime finish)
+        {
+            InitializeOnRunStarted(start);
             foreach (var testRun in testRuns)
             {
                 AddCompleteTestRun(testRun);

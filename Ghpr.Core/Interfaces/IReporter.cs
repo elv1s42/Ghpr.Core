@@ -1,18 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
+using Ghpr.Core.Common;
 
 namespace Ghpr.Core.Interfaces
 {
     public interface IReporter
     {
+        ReportSettingsDto ReportSettings { get; }
+        ReporterSettings ReporterSettings { get; }
+        bool TestRunStarted { get; }
+
+        IRunDtoRepository RunRepository { get; }
+        ITestRunsRepository TestRunsRepository { get; }
+        ITestRunDtoProcessor TestRunProcessor { get; }
+        IDataService DataService { get; }
+        IActionHelper Action { get; }
+        ITestDataProvider TestDataProvider { get; }
+
         void RunStarted();
         void RunFinished();
 
-        void TestStarted(ITestRun testRun);
-        void AddCompleteTestRun(ITestRun testRun);
-        void TestFinished(ITestRun testRun);
+        void TestStarted(TestRunDto testRun);
+        void AddCompleteTestRun(TestRunDto testRun);
+        void TestFinished(TestRunDto testRun);
 
-        void GenerateFullReport(List<ITestRun> testRuns);
-        void GenerateFullReport(List<ITestRun> testRuns, DateTime start, DateTime finish);
+        void SaveScreenshot(byte[] screnshotBytes);
+
+        void GenerateFullReport(List<TestRunDto> testRuns);
+        void GenerateFullReport(List<TestRunDto> testRuns, DateTime start, DateTime finish);
     }
 }

@@ -1,4 +1,6 @@
-﻿using Ghpr.Core.Enums;
+﻿using Ghpr.Core.Common;
+using Ghpr.Core.Enums;
+using Ghpr.Core.Factories;
 using Ghpr.Core.Interfaces;
 
 namespace Ghpr.Core
@@ -6,10 +8,10 @@ namespace Ghpr.Core
     public static class ReporterManager
     {
         private static bool _initialized;
-        private static Reporter _reporter;
+        private static IReporter _reporter;
         private static readonly object Lock;
 
-        public static string OutputPath => _reporter.Settings.OutputPath;
+        public static string OutputPath => _reporter.ReporterSettings.OutputPath;
         
         static ReporterManager()
         {
@@ -17,32 +19,32 @@ namespace Ghpr.Core
             _initialized = false;
         }
 
-        public static void Initialize()
+        public static void Initialize(ITestDataProvider testDataProvider)
         {
             lock (Lock)
             {
                 if (_initialized) return;
-                _reporter = new Reporter();
+                _reporter = ReporterFactory.Build(testDataProvider);
                 _initialized = true;
             }
         }
 
-        public static void Initialize(IReporterSettings settings)
+        public static void Initialize(ReporterSettings settings, ITestDataProvider testDataProvider)
         {
             lock (Lock)
             {
                 if (_initialized) return;
-                _reporter = new Reporter(settings);
+                _reporter = ReporterFactory.Build(settings, testDataProvider);
                 _initialized = true;
             }
         }
 
-        public static void Initialize(TestingFramework framework)
+        public static void Initialize(TestingFramework framework, ITestDataProvider testDataProvider)
         {
             lock (Lock)
             {
                 if (_initialized) return;
-                _reporter = new Reporter(framework);
+                _reporter = ReporterFactory.Build(framework, testDataProvider);
                 _initialized = true;
             }
         }
@@ -63,7 +65,7 @@ namespace Ghpr.Core
             }
         }
 
-        public static void TestStarted(ITestRun testRun)
+        public static void TestStarted(TestRunDto testRun)
         {
             lock (Lock)
             {
@@ -71,7 +73,7 @@ namespace Ghpr.Core
             }
         }
 
-        public static void TestFinished(ITestRun testRun)
+        public static void TestFinished(TestRunDto testRun)
         {
             lock (Lock)
             {

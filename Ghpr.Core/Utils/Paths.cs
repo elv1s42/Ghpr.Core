@@ -1,51 +1,72 @@
-﻿using System.IO;
-// ReSharper disable InconsistentNaming
+﻿// ReSharper disable InconsistentNaming
 
 namespace Ghpr.Core.Utils
 {
-    public static class Paths
+    public class Paths
     {
-        public static void Create(string path)
+        public Paths()
         {
-            if (!Directory.Exists(path))
-            {
-                Directory.CreateDirectory(path);
-            }
+            Name = new Names();
+            Folder = new Folders();
+            File = new Files();
         }
 
-        public static string GetRelativeTestRunPath(string testGuid, string testFileName)
+        public Names Name { get; }
+        public Folders Folder { get; }
+        public Files File { get; }
+
+        public class Names
         {
-            return $"{testGuid}\\{testFileName}";
+            public static string ScreenshotKeyTemplate = "ghpr_screenshot_";
+            public static string TestDataCommentKeyTemplate = "ghpr_test_data_comment_";
+            public static string TestDataDateTimeKeyTemplate = "ghpr_test_data_datetime_";
+            public static string TestDataActualKeyTemplate = "ghpr_test_data_actual_";
+            public static string TestDataExpectedKeyTemplate = "ghpr_test_data_expected_";
         }
 
-        public static class Names
+        public class Folders
         {
-            public const string ScreenshotKeyTemplate = "ghpr_screenshot_";
-            public const string TestDataCommentKeyTemplate = "ghpr_test_data_comment_";
-            public const string TestDataDateTimeKeyTemplate = "ghpr_test_data_datetime_";
-            public const string TestDataActualKeyTemplate = "ghpr_test_data_actual_";
-            public const string TestDataExpectedKeyTemplate = "ghpr_test_data_expected_";
+            public string Tests = "tests";
+            public string Runs = "runs";
+            public string Img = "img";
+            public string Src = "src";
         }
 
-        public static class Folders
+        public class Files
         {
-            public const string Tests = "tests";
-            public const string Runs = "runs";
-            public const string Img = "img";
-            public const string Src = "src";
+            public static string CoreSettings = "Ghpr.Core.Settings.json";
+            public static string MSTestSettings = "Ghpr.MSTest.Settings.json";
+            public static string MSTestV2Settings = "Ghpr.MSTestV2.Settings.json";
+            public static string NUnitSettings = "Ghpr.NUnit.Settings.json";
+            public static string SpecFlowSettings = "Ghpr.SpecFlow.Settings.json";
+            public static string ReportSettings = "ReportSettings.json";
+            public string Tests = "tests.json";
+            public string Runs = "runs.json";
         }
 
-        public static class Files
+        public static string GetScreenKey(int count)
         {
-            public const string DefaultLog = "GHPReporter.txt";
-            public const string CoreSettings = "Ghpr.Core.Settings.json";
-            public const string MSTestSettings = "Ghpr.MSTest.Settings.json";
-            public const string MSTestV2Settings = "Ghpr.MSTestV2.Settings.json";
-            public const string NUnitSettings = "Ghpr.NUnit.Settings.json";
-            public const string SpecFlowSettings = "Ghpr.SpecFlow.Settings.json";
-            public const string ReportSettings = "ReportSettings.json";
-            public const string Tests = "tests.json";
-            public const string Runs = "runs.json";
+            return $"{Names.ScreenshotKeyTemplate}{count}";
+        }
+
+        public static string GetTestDataDateTimeKey(int count)
+        {
+            return $"{Names.TestDataDateTimeKeyTemplate}{count}";
+        }
+
+        public static string GetTestDataCommentKey(int count)
+        {
+            return $"{Names.TestDataCommentKeyTemplate}{count}";
+        }
+
+        public static string GetTestDataActualKey(int count)
+        {
+            return $"{Names.TestDataActualKeyTemplate}{count}";
+        }
+
+        public static string GetTestDataExpectedKey(int count)
+        {
+            return $"{Names.TestDataExpectedKeyTemplate}{count}";
         }
     }
 }
